@@ -3,7 +3,9 @@
 # through the Linux mass-storage gadget. Run on the CardputerZero as root.
 #
 #   sudo cz-gadget.sh up <image> [cd|disk]   create the gadget and "insert" the image
-#   sudo cz-gadget.sh swap <image>           change the disc without unplugging
+#   sudo cz-gadget.sh swap <image> [replug]  change the disc (replug: also reconnect USB,
+#                                            for hosts that miss the media change, e.g. macOS)
+#   sudo cz-gadget.sh replug                 disconnect and reconnect USB (host re-reads the drive)
 #   sudo cz-gadget.sh eject                  take the disc out (drive stays)
 #   sudo cz-gadget.sh status                 what the host sees
 #   sudo cz-gadget.sh down                   remove the gadget
@@ -77,7 +79,7 @@ up() {
 
     udc_name > "$G/UDC"
     echo "up: $(basename "$img") as $mode on $(cat "$G/UDC")"
-    status
+    wait_configured
 }
 
 swap() {
@@ -90,6 +92,35 @@ swap() {
     sleep 1
     echo "$img" > "$LUN/file"
     echo "inserted: $(basename "$img")"
+    [[ ${2:-} == replug ]] && replug
+    return 0
+}
+
+# soft unplug + plug: the host drops the drive and enumerates it again with the current disc
+replug() {
+    need_root
+    [[ -d $G ]] || die "gadget is not up"
+    local udc
+    udc=$(cat "$G/UDC")
+    [[ -n $udc ]] || udc=$(udc_name)
+    echo "" > "$G/UDC"
+    sleep 1
+    echo "$udc" > "$G/UDC"
+    echo "reconnected"
+    wait_configured
+}
+
+# the host needs a moment to enumerate after (re)connecting
+wait_configured() {
+    local u state
+    for _ in $(seq 1 20); do
+        for u in /sys/class/udc/*; do
+            state=$(cat "$u/state" 2>/dev/null || true)
+            [[ $state == configured ]] && { echo "host: configured"; return 0; }
+        done
+        sleep 0.25
+    done
+    echo "host: not configured yet (${state:-?}); check the switch (Slave) and the right USB-C"
 }
 
 eject() {
@@ -132,8 +163,9 @@ shift || true
 case $cmd in
     up) up "$@" ;;
     swap) swap "$@" ;;
+    replug) replug ;;
     eject) eject ;;
     status) status ;;
     down) down ;;
-    *) sed -n '2,13p' "$0"; exit 1 ;;
+    *) sed -n '2,15p' "$0"; exit 1 ;;
 esac
