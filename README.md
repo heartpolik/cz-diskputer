@@ -54,13 +54,15 @@ Checklist:
 | ![drive](app/screenshots/drive.png) | ![list](app/screenshots/list.png) |
 | ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
 | ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
+| ![fn](app/screenshots/fn.png) | |
 
 - Images live in `~/discputer/images` on the CardputerZero (`scp` them over Wi-Fi). Each one shows its
   volume label and what it is: `BOOT` (El Torito), `HYBRID` (also boots as a USB disk), `DATA`, `MBR`/`GPT`/`RAW`
   disk images, `BIN/CUE` (iteration B).
 - `Enter` inserts the selected image; with a disc already in, it swaps and reconnects USB so every host
   notices. `E` eject, `R` reconnect, `S` stop the drive, `M` mode AUTO / CD / DISK (AUTO: CD for ISOs,
-  disk for `.img`). The drive keeps running after the app exits.
+  disk for `.img`). The drive keeps running after the app exits. Labels over keys 4..8 show these
+  actions; with Fn tapped they switch to Fn+4..8 (F5 rescan, F6 theme).
 - Status: `ONLINE` = a computer uses the drive, `NO HOST` = the switch or the cable, `USB OFF` = stopped.
 - Privileges: the app runs as `pi`; the package installs a root helper `/usr/libexec/discputer/dp-gadget`
   and a sudo rule for the `plugdev` group (`/etc/sudoers.d/discputer`, checked with `visudo` in postinst).

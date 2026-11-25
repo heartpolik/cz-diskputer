@@ -85,11 +85,13 @@ DiscApp::DiscApp(cz::Runtime& rt)
     rescan();
     state_ = gadget_->state();
     build();
+    rt_.set_layer_handler([this](cz::LayerState s) { bar_.show_layer(s); });
     timer_ = lv_timer_create([](lv_timer_t* t) { static_cast<DiscApp*>(lv_timer_get_user_data(t))->poll(); }, 300,
                              this);
 }
 
 DiscApp::~DiscApp() {
+    rt_.set_layer_handler(nullptr);
     if (timer_) lv_timer_delete(timer_);
     save();
     destroy();
@@ -162,6 +164,9 @@ void DiscApp::build() {
     lv_label_set_long_mode(footer_, LV_LABEL_LONG_MODE_DOTS);
 
     bar_.build(root_, s);
+    bar_.set(5, "rescan", true, cz::KeyLayer::Fn);
+    bar_.set(6, "theme", true, cz::KeyLayer::Fn);
+    bar_.show_layer(rt_.key_layer());
 
     help_ = make_box(root_, 0, 0, kWidth, kHeight);
     lv_obj_set_style_bg_color(help_, s.bg, 0);

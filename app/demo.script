@@ -3,4 +3,5 @@ xxxxxx{wait:150}{shot:@OUT@/list.png}
 {enter}{wait:800}{shot:@OUT@/swap.png}
 {up}{up}{wait:100}{enter}{wait:800}{shot:@OUT@/disk.png}
 7{wait:600}{shot:@OUT@/off.png}
+{layer:fn}{wait:150}{shot:@OUT@/fn.png}{layer:base}
 {f1}{wait:150}{shot:@OUT@/help.png}{quit}
