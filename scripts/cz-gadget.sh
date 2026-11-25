@@ -42,7 +42,10 @@ up() {
     local img mode=${2:-cd}
     img=$(check_image "${1:-}")
     [[ $mode == cd || $mode == disk ]] || die "mode is cd or disk"
-    [[ -d $G ]] && die "gadget already exists: use swap, or down first"
+    if [[ -d $G ]]; then
+        echo "gadget was up: restarting it"
+        down >/dev/null
+    fi
 
     modprobe libcomposite
     modprobe usb_f_mass_storage
