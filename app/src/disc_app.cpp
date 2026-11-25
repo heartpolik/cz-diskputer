@@ -28,11 +28,6 @@ const char* kHelp =
     "The computer sees a CD-ROM (or a disk)\n"
     "with the image you insert here.\n"
     "\n"
-    "#63e2b7 CONNECT#\n"
-    "Host/Slave switch (left side): Slave\n"
-    "Cable: RIGHT USB-C to the computer\n"
-    "(Ethernet and USB-A are off in Slave)\n"
-    "\n"
     "#63e2b7 KEYS# (under the screen: 4..8)\n"
     "F / X   choose an image (no Fn needed)\n"
     "8 Enter insert it (swaps the disc)\n"
@@ -65,6 +60,78 @@ const char* kHelp =
     "\n"
     "The drive keeps working after you\n"
     "leave the app; S stops it.";
+
+constexpr int kDiagramH = 160;  // the connect diagram on top of the help
+
+lv_obj_t* rect(lv_obj_t* parent, int x, int y, int w, int h, lv_color_t fill, lv_opa_t opa = LV_OPA_COVER,
+               int radius = 1) {
+    auto* r = make_box(parent, x, y, w, h);
+    lv_obj_set_style_bg_color(r, fill, 0);
+    lv_obj_set_style_bg_opa(r, opa, 0);
+    lv_obj_set_style_radius(r, radius, 0);
+    return r;
+}
+
+lv_obj_t* text_at(lv_obj_t* parent, const lv_font_t* font, lv_color_t color, const char* text, int x, int y,
+                  int w = 0, lv_text_align_t align = LV_TEXT_ALIGN_LEFT) {
+    auto* l = make_label(parent, font, color, text);
+    lv_obj_set_pos(l, x, y);
+    if (w > 0) {
+        lv_obj_set_width(l, w);
+        lv_obj_set_style_text_align(l, align, 0);
+    }
+    return l;
+}
+
+// How to plug in, drawn: the CardputerZero from the front (schematic: the official docs give the
+// sides of the ports and the switch, not their exact places). Switch on the LEFT side, Slave = up
+// (left); in Slave the CM0 USB is the RIGHT USB-C (C2), the hub side (USB-A, C1, Ethernet) is off.
+void build_connect_diagram(lv_obj_t* parent, const cz::Style& s) {
+    auto* d = make_box(parent, 0, 0, kWidth - 12, kDiagramH);
+    text_at(d, s.ui12, s.accent, "CONNECT", 0, 0);
+    text_at(d, s.ui10, s.dim, "(schematic)", 66, 2);
+
+    // the body, 84 x 54 mm
+    const int bx = 92, by = 20, bw = 116, bh = 75;
+    auto* body = rect(d, bx, by, bw, bh, s.surface, LV_OPA_COVER, 6);
+    lv_obj_set_style_border_width(body, 1, 0);
+    lv_obj_set_style_border_color(body, s.border, 0);
+    rect(d, bx + 30, by + 6, 56, 24, s.bg, LV_OPA_COVER, 2);  // screen
+    text_at(d, s.ui10, s.dim, "LCD", bx + 30, by + 11, 56, LV_TEXT_ALIGN_CENTER);
+    for (int row = 0; row < 4; ++row) {  // keyboard
+        for (int col = 0; col < 10; ++col) {
+            rect(d, bx + 9 + col * 10, by + 36 + row * 9, 7, 6, s.border, LV_OPA_COVER, 1);
+        }
+    }
+    text_at(d, s.ui10, s.dim, "EXT", bx, by - 12, bw, LV_TEXT_ALIGN_CENTER);
+
+    // left side: the switch (thumb up = Slave), USB-C1, USB-A
+    auto* track = rect(d, bx - 4, by + 8, 7, 20, s.bg, LV_OPA_COVER, 2);
+    lv_obj_set_style_border_width(track, 1, 0);
+    lv_obj_set_style_border_color(track, s.accent, 0);
+    rect(d, bx - 3, by + 9, 5, 9, s.accent, LV_OPA_COVER, 1);  // the thumb, up
+    rect(d, bx - 3, by + 38, 4, 11, s.dim, LV_OPA_COVER, 1);   // USB-C1
+    rect(d, bx - 4, by + 54, 5, 15, s.dim, LV_OPA_COVER, 1);   // USB-A
+    text_at(d, s.ui12, s.accent, "SWITCH", 0, by + 3, bx - 10, LV_TEXT_ALIGN_RIGHT);
+    text_at(d, s.ui10, s.accent, "up = SLAVE", 0, by + 18, bx - 10, LV_TEXT_ALIGN_RIGHT);
+    text_at(d, s.ui10, s.dim, "USB-C1 (off)", 0, by + 37, bx - 10, LV_TEXT_ALIGN_RIGHT);
+    text_at(d, s.ui10, s.dim, "USB-A (off)", 0, by + 55, bx - 10, LV_TEXT_ALIGN_RIGHT);
+
+    // right side: USB-C2 to the computer, Grove
+    rect(d, bx + bw - 1, by + 22, 4, 11, s.accent, LV_OPA_COVER, 1);  // USB-C2
+    rect(d, bx + bw + 3, by + 26, 16, 3, s.accent);                    // the cable
+    rect(d, bx + bw - 1, by + 52, 4, 10, s.dim, LV_OPA_COVER, 1);      // Grove
+    text_at(d, s.ui12, s.accent, "USB-C2", bx + bw + 22, by + 14);
+    text_at(d, s.ui10, s.accent, "computer", bx + bw + 22, by + 29);
+    text_at(d, s.ui10, s.dim, "Grove", bx + bw + 8, by + 51);
+
+    text_at(d, s.ui10, s.text,
+            "Switch on the LEFT side: up (left) = SLAVE.\n"
+            "Cable: the RIGHT USB-C (C2) to the computer.\n"
+            "Green LED is on in HOST mode (USB hub),\n"
+            "off in SLAVE. In SLAVE: no Ethernet, USB-A, C1.",
+            0, by + bh + 6);
+}
 
 std::string color_hex(lv_color_t c) {
     char buf[8];
@@ -187,7 +254,9 @@ void DiscApp::build() {
     lv_obj_add_flag(help_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(help_, LV_SCROLLBAR_MODE_ACTIVE);
     lv_obj_set_style_pad_all(help_, 6, 0);
+    build_connect_diagram(help_, s);
     help_text_ = make_label(help_, s.mono12, s.text, kHelp);
+    lv_obj_set_pos(help_text_, 0, kDiagramH + 4);
     lv_label_set_recolor(help_text_, true);
     lv_obj_add_flag(help_, LV_OBJ_FLAG_HIDDEN);
 

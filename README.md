@@ -11,7 +11,11 @@ USBODE, so it is GPL-3.0 as well.
 
 ## Hardware
 
-- **Host/Slave switch** (left side) on **Slave**: the CM0 USB goes straight to the **right USB-C**
+![connect](app/screenshots/connect.png)
+
+The same picture opens first in the app's help (F1).
+
+- **Host/Slave switch** (left side) on **Slave** (up / left; the green LED is off in Slave): the CM0 USB goes straight to the **right USB-C**
   port. The internal USB hub is off then: no Ethernet, USB-A, left USB-C or EXT USB. Wi-Fi works.
 - USB device controller: `dwc2` (`/sys/class/udc/3f980000.usb`, device tree `dr_mode = otg`).
 - Kernel functions available: `usb_f_mass_storage` (CD-ROM or disk), `usb_f_fs` (gadget in userspace).
@@ -53,9 +57,10 @@ Checklist:
 |---|---|
 | ![drive](app/screenshots/drive.png) | ![list](app/screenshots/list.png) |
 | ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
-| ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
+| ![off](app/screenshots/off.png) | |
 | ![fn](app/screenshots/fn.png) | ![copy](app/screenshots/copy.png) |
 | ![setup](app/screenshots/setup.png) | ![delete](app/screenshots/delete.png) |
+| ![connect](app/screenshots/connect.png) | ![help](app/screenshots/help.png) |
 
 - **Copying images in over USB** (0.2.0): `U` or Fn+7 turns the drive into a writable USB flash drive
   `DISCPUTER` (exFAT). Copy images onto it from the computer and eject it there: the app notices the

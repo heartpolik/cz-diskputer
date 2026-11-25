@@ -6,4 +6,4 @@ xxxxxx{wait:150}{shot:@OUT@/list.png}
 {layer:fn}{wait:150}{shot:@OUT@/fn.png}{layer:base}
 {wait:100}d{wait:150}{shot:@OUT@/delete.png}{esc}{wait:100}
 u{wait:700}{shot:@OUT@/copy.png}
-{f1}{wait:150}{shot:@OUT@/help.png}{quit}
+{f1}{wait:150}{shot:@OUT@/connect.png}{down}{down}{down}{down}{down}{wait:100}{shot:@OUT@/help.png}{quit}
