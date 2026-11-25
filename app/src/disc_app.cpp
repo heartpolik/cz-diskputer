@@ -40,6 +40,7 @@ const char* kHelp =
     "5 R     reconnect USB\n"
     "6 M     mode AUTO / CD / DISK\n"
     "7 S     stop the drive\n"
+    "F4 D    delete the selected image\n"
     "F5      rescan the folder   F6 theme\n"
     "F7 U    USB flash drive: copy images\n"
     "\n"
@@ -174,6 +175,7 @@ void DiscApp::build() {
     lv_label_set_long_mode(footer_, LV_LABEL_LONG_MODE_DOTS);
 
     bar_.build(root_, s);
+    bar_.set(4, "delete", true, cz::KeyLayer::Fn);
     bar_.set(5, "rescan", true, cz::KeyLayer::Fn);
     bar_.set(6, "theme", true, cz::KeyLayer::Fn);
     bar_.set(7, "copy in", true, cz::KeyLayer::Fn);
@@ -216,6 +218,24 @@ void DiscApp::build() {
     auto* keys = make_label(setup_, s.ui10, s.dim, "Enter  OK        Esc  later (USB stays off)");
     lv_obj_set_pos(keys, 8, 150);
     lv_obj_add_flag(setup_, LV_OBJ_FLAG_HIDDEN);
+
+    // delete confirmation: a framed box over the list
+    confirm_ = make_box(root_, 16, 44, kWidth - 32, 78);
+    lv_obj_set_style_bg_color(confirm_, s.surface, 0);
+    lv_obj_set_style_bg_opa(confirm_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(confirm_, 1, 0);
+    lv_obj_set_style_border_color(confirm_, s.error, 0);
+    lv_obj_set_style_radius(confirm_, 4, 0);
+    auto* ct = make_label(confirm_, s.ui12, s.error, "DELETE IMAGE?");
+    lv_obj_set_pos(ct, 8, 4);
+    confirm_text_ = make_label(confirm_, s.ui10, s.text);
+    lv_obj_set_pos(confirm_text_, 8, 22);
+    lv_obj_set_width(confirm_text_, kWidth - 48);
+    lv_label_set_long_mode(confirm_text_, LV_LABEL_LONG_MODE_DOTS);
+    auto* ck = make_label(confirm_, s.ui10, s.dim, "Enter / Y  delete        Esc / N  keep");
+    lv_obj_set_pos(ck, 8, 56);
+    lv_obj_add_flag(confirm_, LV_OBJ_FLAG_HIDDEN);
+    delete_path_.clear();
     refresh_setup();
     refresh();
 }
@@ -513,6 +533,38 @@ bool DiscApp::action(int key) {
     }
 }
 
+void DiscApp::ask_delete() {
+    if (images_.empty()) return;
+    const auto& img = images_[static_cast<size_t>(sel_)];
+    if (state_.up && img.path == state_.file) {
+        rt_.toast().show("it is in the drive: eject it first (4)", view::widgets::ToastTone::Error, 2500);
+        return;
+    }
+    delete_path_ = img.path;
+    const std::string text = img.name + "\n" + dp::format_size(img.info.size) + "  -  can't be undone";
+    lv_label_set_text(confirm_text_, text.c_str());
+    lv_obj_clear_flag(confirm_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void DiscApp::delete_confirmed() {
+    const std::string path = delete_path_;
+    delete_path_.clear();
+    lv_obj_add_flag(confirm_, LV_OBJ_FLAG_HIDDEN);
+    // the drive may have taken it meanwhile (the state is polled)
+    if (state_.up && path == state_.file) {
+        rt_.toast().show("it is in the drive: eject it first (4)", view::widgets::ToastTone::Error, 2500);
+        return;
+    }
+    std::error_code ec;
+    if (!std::filesystem::remove(path, ec) || ec) {
+        rt_.toast().show(std::string("can't delete: ") + (ec ? ec.message() : "not found"),
+                         view::widgets::ToastTone::Error, 3000);
+    } else {
+        rt_.toast().show("deleted " + base_name(path), view::widgets::ToastTone::Default, 1500);
+    }
+    rescan();
+}
+
 void DiscApp::toggle_help() {
     if (!lv_obj_has_flag(help_, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_add_flag(help_, LV_OBJ_FLAG_HIDDEN);
@@ -524,6 +576,17 @@ void DiscApp::toggle_help() {
 
 bool DiscApp::on_key(const cz::KeyEvent& ev) {
     if (setup_on_) return setup_key(ev);
+    if (!delete_path_.empty()) {
+        if (ev.phase != cz::KeyPhase::Press) return true;
+        if (ev.key == key::Enter || ev.key == 'y' || ev.key == 'Y') {
+            delete_confirmed();
+        } else {
+            delete_path_.clear();
+            lv_obj_add_flag(confirm_, LV_OBJ_FLAG_HIDDEN);
+        }
+        refresh();
+        return true;
+    }
     const bool press = ev.phase == cz::KeyPhase::Press;
     const uint32_t k = ev.key;
     if (!lv_obj_has_flag(help_, LV_OBJ_FLAG_HIDDEN)) {
@@ -580,6 +643,13 @@ bool DiscApp::on_key(const cz::KeyEvent& ev) {
                 case 'U':
                 case key::F(7):
                     copy_in();
+                    break;
+                case 'd':
+                case 'D':
+                case key::Backspace:
+                case key::Delete:
+                case key::F(4):
+                    ask_delete();
                     break;
                 case key::F(5):
                     rescan();

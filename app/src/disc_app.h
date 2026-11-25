@@ -40,6 +40,8 @@ private:
     void toggle_help();
     void insert_selected();
     void copy_in();
+    void ask_delete();
+    void delete_confirmed();
     void show_setup(bool on);
     void refresh_setup();
     bool setup_key(const cz::KeyEvent& ev);
@@ -60,11 +62,12 @@ private:
     int first_{0};
     ModePref pref_{ModePref::Auto};
     std::string busy_text_;
-    bool drop_in_use_{false};
-    bool setup_on_{false};      // the first-run password screen is up
+    bool drop_in_use_{false};  // the computer had the flash drive: import when it ejects it
+    bool setup_on_{false};     // the first-run password screen is up
     bool setup_checking_{false};
     std::string password_;
-    std::string setup_note_;  // the computer had the flash drive: import when it ejects it
+    std::string setup_note_;
+    std::string delete_path_;  // non-empty: the delete confirmation is up
     lv_timer_t* timer_{nullptr};
 
     lv_obj_t* root_{nullptr};
@@ -84,6 +87,8 @@ private:
     lv_obj_t* setup_{nullptr};
     lv_obj_t* setup_field_{nullptr};
     lv_obj_t* setup_note_label_{nullptr};
+    lv_obj_t* confirm_{nullptr};
+    lv_obj_t* confirm_text_{nullptr};
 };
 
 }  // namespace dp_ui

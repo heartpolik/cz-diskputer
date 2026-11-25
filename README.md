@@ -55,7 +55,7 @@ Checklist:
 | ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
 | ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
 | ![fn](app/screenshots/fn.png) | ![copy](app/screenshots/copy.png) |
-| ![setup](app/screenshots/setup.png) | |
+| ![setup](app/screenshots/setup.png) | ![delete](app/screenshots/delete.png) |
 
 - **Copying images in over USB** (0.2.0): `U` or Fn+7 turns the drive into a writable USB flash drive
   `DISCPUTER` (exFAT). Copy images onto it from the computer and eject it there: the app notices the
@@ -63,7 +63,8 @@ Checklist:
   The drive is a sparse file `/var/lib/cz-discputer/drop.img` (free space minus 2 GiB, at most 64 GiB),
   made fresh each time and deleted after the import; macOS `._*`, `.Spotlight-V100` etc. are skipped.
   Measured: ~10 MB/s copy onto it, then ~10 MB/s import on the SD card (200 MB: 19 s + 21 s, md5 ok).
-- Images live in `~/discputer/images` on the CardputerZero (copied in over USB, or `scp` over Wi-Fi). Each one shows its
+- Images live in `~/discputer/images` on the CardputerZero (copied in over USB, or `scp` over Wi-Fi).
+  `D`, Del or Fn+4 deletes the selected one after a confirmation (not while it is in the drive). Each one shows its
   volume label and what it is: `BOOT` (El Torito), `HYBRID` (also boots as a USB disk), `DATA`, `MBR`/`GPT`/`RAW`
   disk images, `BIN/CUE` (iteration B).
 - `Enter` inserts the selected image; with a disc already in, it swaps and reconnects USB so every host
