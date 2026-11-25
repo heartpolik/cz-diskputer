@@ -3,4 +3,7 @@ set -e
 if [ "$1" = remove ] || [ "$1" = purge ]; then
     rm -f /etc/sudoers.d/discputer
 fi
+if [ "$1" = purge ]; then
+    rm -rf /var/lib/discputer
+fi
 exit 0

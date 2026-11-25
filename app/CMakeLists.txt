@@ -1,7 +1,7 @@
 # cz-discputer: USB optical drive emulator (GPL-3.0). Built through cardputer-zero-tools:
 #   cmake -S <cardputer-zero-tools> -DCZ_APP_DIR=<this folder> ...   (scripts/dp does it)
 
-set(DP_VERSION 0.1.0)
+set(DP_VERSION 0.2.0)
 
 add_library(dp_core STATIC
     core/image_info.cpp
@@ -40,5 +40,5 @@ cz_package_app(
 )
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "sudo")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "sudo, exfatprogs")
 include(CPack)

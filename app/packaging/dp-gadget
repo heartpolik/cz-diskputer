@@ -11,6 +11,10 @@
 #   sudo cz-gadget.sh eject                  take the disc out (drive stays)
 #   sudo cz-gadget.sh status                 what the host sees
 #   sudo cz-gadget.sh down                   remove the gadget
+#   sudo cz-gadget.sh drop                   be a USB flash drive (exFAT, label DISCPUTER) to copy
+#                                            images onto from the computer
+#   sudo cz-gadget.sh import                 after the computer ejected it: move what was copied
+#                                            into ~/discputer/images
 #
 # The Host/Slave switch on the left side must be on Slave: then the CM0 USB goes to
 # the RIGHT USB-C port (the USB hub, Ethernet and USB-A are off while it is there).
@@ -18,10 +22,16 @@
 # cd   : SCSI CD-ROM (ISO 9660 / El Torito boot), what installers on CD expect.
 # disk : read-only removable disk; better for "hybrid" Linux ISOs and some UEFI firmware.
 set -euo pipefail
+export PATH=/usr/sbin:/sbin:/usr/bin:/bin
 
 G=/sys/kernel/config/usb_gadget/discputer
 F=$G/functions/mass_storage.usb0
 LUN=$F/lun.0
+# the copy-in flash drive: root's own, outside the user's home (no symlink games)
+DROP_DIR=/var/lib/discputer
+DROP=$DROP_DIR/drop.img
+DROP_MNT=/run/discputer/drop
+GiB=$((1024 * 1024 * 1024))
 
 die() { echo "error: $*" >&2; exit 1; }
 need_root() { [[ $EUID -eq 0 ]] || die "run as root (sudo)"; }
@@ -56,6 +66,16 @@ up() {
     local img mode=${2:-cd}
     img=$(check_image "${1:-}")
     [[ $mode == cd || $mode == disk ]] || die "mode is cd or disk"
+    [[ $(lun_mode) == drop && -n $(cat "$LUN/file" 2>/dev/null) ]] &&
+        die "the USB flash drive is in use: eject it on the computer first"
+    build_gadget "$img" "$mode"
+    echo "up: $(basename "$img") as $mode on $(cat "$G/UDC")"
+    wait_configured
+}
+
+# mode: cd | disk (read-only) | drop (writable flash drive)
+build_gadget() {
+    local img=$1 mode=$2
     if [[ -d $G ]]; then
         echo "gadget was up: restarting it"
         down >/dev/null
@@ -82,21 +102,121 @@ up() {
     mkdir -p "$F"
     echo 1 > "$F/stall"
     echo 1 > "$LUN/removable"
-    echo 1 > "$LUN/ro"
+    # vendor(8) product(16) revision(4)
     if [[ $mode == cd ]]; then
+        echo 1 > "$LUN/ro"
         echo 1 > "$LUN/cdrom"
-        # vendor(8) product(16) revision(4)
         printf '%-8s%-16s%-4s' "CZ" "DiscPuter CD" "0001" > "$LUN/inquiry_string"
-    else
+    elif [[ $mode == disk ]]; then
+        echo 1 > "$LUN/ro"
         echo 0 > "$LUN/cdrom"
         printf '%-8s%-16s%-4s' "CZ" "DiscPuter Disk" "0001" > "$LUN/inquiry_string"
+    else
+        echo 0 > "$LUN/ro"
+        echo 0 > "$LUN/cdrom"
+        printf '%-8s%-16s%-4s' "CZ" "DiscPuter USB" "0001" > "$LUN/inquiry_string"
     fi
     echo "$img" > "$LUN/file"
     ln -s "$F" "$G/configs/c.1/"
 
     udc_name > "$G/UDC"
-    echo "up: $(basename "$img") as $mode on $(cat "$G/UDC")"
+}
+
+# cd | disk | drop | none
+lun_mode() {
+    [[ -d $LUN ]] || { echo none; return; }
+    if [[ $(cat "$LUN/cdrom") == 1 ]]; then echo cd
+    elif [[ $(cat "$LUN/ro") == 1 ]]; then echo disk
+    else echo drop; fi
+}
+
+user_home() {
+    local user=${SUDO_USER:-$(id -un)}
+    getent passwd "$user" | cut -d: -f6
+}
+
+# ------------------------------------------------------------ copy-in flash drive
+
+drop() {
+    need_root
+    [[ $(lun_mode) == drop && -n $(cat "$LUN/file" 2>/dev/null) ]] && { echo "USB flash drive: already in"; return; }
+    mountpoint -q "$DROP_MNT" && umount "$DROP_MNT"
+    install -d -m 0700 -o root -g root "$DROP_DIR"
+    if [[ ! -f $DROP || -L $DROP ]]; then
+        rm -f "$DROP"
+        # sparse: takes only what the computer writes; leave 2 GiB free, at most 64 GiB
+        local avail size
+        avail=$(df --output=avail -B1 "$DROP_DIR" | tail -1)
+        size=$(( avail - 2 * GiB ))
+        (( size > 64 * GiB )) && size=$(( 64 * GiB ))
+        (( size >= GiB )) || die "not enough free space on the SD card for a USB drive"
+        size=$(( size / (1024 * 1024) * 1024 * 1024 ))
+        truncate -s "$size" "$DROP"
+        mkfs.exfat -L DISCPUTER "$DROP" >/dev/null || { rm -f "$DROP"; die "mkfs.exfat failed"; }
+        echo "new USB drive: $(( size / GiB )) GiB"
+    fi
+    build_gadget "$DROP" drop
+    echo "USB flash drive DISCPUTER on $(cat "$G/UDC")"
     wait_configured
+}
+
+# The computer ejected the drive (or the user says it is done): take it away from USB and
+# move every file on it into the user's images folder. File work runs as that user.
+import() {
+    need_root
+    local user home images uid gid
+    user=${SUDO_USER:-$(id -un)}
+    home=$(user_home)
+    images=$home/discputer/images
+    uid=$(id -u "$user")
+    gid=$(id -g "$user")
+    [[ -f $DROP && ! -L $DROP ]] || die "no USB drive to import from"
+    if [[ $(lun_mode) == drop ]]; then
+        down >/dev/null
+        sync
+    fi
+    runuser -u "$user" -- mkdir -p "$images"
+    fsck.exfat -p "$DROP" >/dev/null 2>&1 || true
+    mkdir -p "$DROP_MNT"
+    mountpoint -q "$DROP_MNT" ||
+        mount -t exfat -o loop,nosuid,nodev,noexec,uid="$uid",gid="$gid",umask=022 "$DROP" "$DROP_MNT" ||
+        die "can't mount the USB drive"
+
+    local n=0 left=0 src name dest base ext i avail need
+    while IFS= read -r -d '' src; do
+        name=$(basename -- "$src")
+        dest=$images/$name
+        if runuser -u "$user" -- test -e "$dest"; then
+            base=${name%.*}; ext=${name##*.}
+            [[ $base == "$name" ]] && ext="" || ext=.$ext
+            i=2
+            while runuser -u "$user" -- test -e "$images/$base ($i)$ext"; do i=$((i + 1)); done
+            dest="$images/$base ($i)$ext"
+        fi
+        need=$(( $(stat -c %s -- "$src") + 512 * 1024 * 1024 ))
+        avail=$(df --output=avail -B1 "$images" | tail -1)
+        if (( avail < need )); then
+            left=$((left + 1))
+            continue
+        fi
+        echo "importing $name"
+        if runuser -u "$user" -- cp --no-preserve=all -- "$src" "$dest.part" &&
+            runuser -u "$user" -- mv -- "$dest.part" "$dest"; then
+            rm -f -- "$src"
+            n=$((n + 1))
+        else
+            runuser -u "$user" -- rm -f -- "$dest.part"
+            left=$((left + 1))
+        fi
+    done < <(find "$DROP_MNT" -mindepth 1 \( -name '.*' -o -name 'System Volume Information' -o -name '$RECYCLE.BIN' \) -prune -o -type f -print0)
+    umount "$DROP_MNT"
+
+    if (( left == 0 )); then
+        rm -f "$DROP"   # a fresh, empty drive next time
+        echo "imported $n file$([[ $n == 1 ]] || echo s)"
+    else
+        echo "imported $n, $left left on the USB drive (not enough space?)"
+    fi
 }
 
 swap() {
@@ -154,7 +274,7 @@ status() {
         local udc file
         udc=$(cat "$G/UDC" 2>/dev/null || true)
         file=$(cat "$LUN/file" 2>/dev/null || true)
-        echo "gadget: up (udc ${udc:-none}, mode $([[ $(cat "$LUN/cdrom") == 1 ]] && echo cd || echo disk))"
+        echo "gadget: up (udc ${udc:-none}, mode $(lun_mode))"
         echo "disc:   ${file:-(empty)}"
     fi
     for u in /sys/class/udc/*; do
@@ -184,5 +304,7 @@ case $cmd in
     eject) eject ;;
     status) status ;;
     down) down ;;
-    *) sed -n '2,15p' "$0"; exit 1 ;;
+    drop) drop ;;
+    import) import ;;
+    *) sed -n '2,19p' "$0"; exit 1 ;;
 esac

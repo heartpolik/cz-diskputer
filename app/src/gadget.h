@@ -13,6 +13,7 @@ namespace dp_ui {
 struct GadgetState {
     bool up{false};          // the drive exists (configfs gadget)
     bool cd{true};           // CD-ROM, else read-only disk
+    bool drop{false};        // the writable copy-in flash drive (dp-gadget drop)
     std::string file;        // the inserted image, empty = no disc
     std::string usb;         // "configured" (a computer uses us), "not attached", ...
     bool controller{true};   // a USB device controller exists at all

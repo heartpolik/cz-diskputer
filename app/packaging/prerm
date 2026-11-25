@@ -4,4 +4,5 @@ set -e
 if [ -x /usr/libexec/discputer/dp-gadget ]; then
     /usr/libexec/discputer/dp-gadget down >/dev/null 2>&1 || true
 fi
+mountpoint -q /run/discputer/drop && umount /run/discputer/drop || true
 exit 0

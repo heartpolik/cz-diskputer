@@ -123,6 +123,7 @@ public:
         if (s.up) {
             s.file = read_line(std::string(kLun) + "/file");
             s.cd = read_line(std::string(kLun) + "/cdrom") != "0";
+            s.drop = !s.cd && read_line(std::string(kLun) + "/ro") == "0";
         }
         s.controller = false;
         for (const auto& u : fs::directory_iterator("/sys/class/udc", ec)) {
@@ -172,8 +173,21 @@ protected:
             s_.up = true;
             s_.file = args.size() > 1 ? args[1] : "";
             s_.cd = args.size() < 3 || args[2] != "disk";
+            s_.drop = false;
             s_.usb = "configured";
             r.message = "host: configured";
+        } else if (cmd == "drop") {
+            s_.up = true;
+            s_.cd = false;
+            s_.drop = true;
+            s_.file = "/var/lib/discputer/drop.img";
+            s_.usb = "configured";
+            r.message = "USB flash drive DISCPUTER";
+        } else if (cmd == "import") {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            s_ = GadgetState{};
+            s_.usb = "not attached";
+            r.message = "imported 0 files";
         } else if (cmd == "swap") {
             s_.file = args.size() > 1 ? args[1] : "";
             r.message = "inserted";
@@ -192,7 +206,7 @@ protected:
 
 private:
     std::mutex mu_;
-    GadgetState s_{false, true, "", "not attached", true};
+    GadgetState s_{false, true, false, "", "not attached", true};
 };
 
 }  // namespace

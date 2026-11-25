@@ -41,6 +41,7 @@ const char* kHelp =
     "6 M     mode AUTO / CD / DISK\n"
     "7 S     stop the drive\n"
     "F5      rescan the folder   F6 theme\n"
+    "F7 U    USB flash drive: copy images\n"
     "\n"
     "#63e2b7 MODES#\n"
     "CD    ISO 9660 / UDF images: installers\n"
@@ -48,8 +49,15 @@ const char* kHelp =
     "      hybrid Linux ISOs if CD won't boot\n"
     "AUTO  CD for ISOs, DISK for the rest\n"
     "\n"
+    "#63e2b7 COPY IMAGES IN#\n"
+    "F7 (Fn 7) or U: the computer sees a\n"
+    "flash drive DISCPUTER. Copy .iso files\n"
+    "onto it, then EJECT it on the computer:\n"
+    "they move to the list by themselves\n"
+    "(8 = done, if it was just unplugged).\n"
+    "\n"
     "#63e2b7 IMAGES#\n"
-    "~/discputer/images (scp them over Wi-Fi)\n"
+    "~/discputer/images (or scp over Wi-Fi)\n"
     "BOOT    bootable (El Torito)\n"
     "HYBRID  also boots as a USB disk\n"
     "BIN/CUE not yet (next version)\n"
@@ -166,6 +174,7 @@ void DiscApp::build() {
     bar_.build(root_, s);
     bar_.set(5, "rescan", true, cz::KeyLayer::Fn);
     bar_.set(6, "theme", true, cz::KeyLayer::Fn);
+    bar_.set(7, "copy in", true, cz::KeyLayer::Fn);
     bar_.show_layer(rt_.key_layer());
 
     help_ = make_box(root_, 0, 0, kWidth, kHeight);
@@ -189,14 +198,24 @@ void DiscApp::poll() {
     CommandResult r;
     if (gadget_->take_result(r)) {
         busy_text_.clear();
+        rescan();
         if (!r.message.empty()) {
             rt_.toast().show(r.message, r.ok ? view::widgets::ToastTone::Default : view::widgets::ToastTone::Error,
                              r.ok ? 1500 : 3500);
         }
     }
     const GadgetState now = gadget_->state();
-    const bool changed = now.up != state_.up || now.file != state_.file || now.usb != state_.usb || now.cd != state_.cd;
+    const bool changed = now.up != state_.up || now.file != state_.file || now.usb != state_.usb ||
+                         now.cd != state_.cd || now.drop != state_.drop;
     state_ = now;
+    // the computer ejected the flash drive: move what it copied into the images folder
+    if (state_.up && state_.drop) {
+        if (!state_.file.empty()) drop_in_use_ = true;
+        else if (drop_in_use_ && !gadget_->busy()) {
+            drop_in_use_ = false;
+            command({"import"}, "Importing images");
+        }
+    }
     if (changed || r.ok || !r.message.empty()) refresh();
 }
 
@@ -214,6 +233,14 @@ void DiscApp::refresh_bar() {
     const bool up = state_.up;
     const bool have = !images_.empty() && images_[static_cast<size_t>(sel_)].info.supported();
     const char* mode = pref_ == ModePref::Auto ? "auto" : pref_ == ModePref::Cd ? "cd" : "disk";
+    if (up && state_.drop) {
+        bar_.set(4, "", false);
+        bar_.set(5, "usb", idle);
+        bar_.set(6, "", false);
+        bar_.set(7, "", false);
+        bar_.set(8, "done", idle);
+        return;
+    }
     bar_.set(4, "eject", idle && up && !state_.file.empty());
     bar_.set(5, "usb", idle && up);
     bar_.set(6, mode, idle);
@@ -227,6 +254,7 @@ void DiscApp::refresh_status() {
     const char* pref = pref_ == ModePref::Auto ? "AUTO" : pref_ == ModePref::Cd ? "CD" : "DISK";
     (void)pref;
     if (!state_.up) text += "#" + color_hex(s.dim) + " USB OFF#";
+    else if (state_.drop) text += "#" + color_hex(s.warn) + " FLASH#";
     else if (state_.usb == "configured") text += "#" + color_hex(s.accent) + " ONLINE#";
     else text += "#" + color_hex(s.warn) + " NO HOST#";
     lv_label_set_text(usb_, text.c_str());
@@ -247,6 +275,15 @@ void DiscApp::refresh_drive() {
     } else if (!state_.up) {
         title = "Drive off";
         info = "Enter inserts the selected image";
+    } else if (state_.drop) {
+        title = "USB flash drive DISCPUTER";
+        if (state_.usb != "configured") {
+            border = s.warn;
+            info = "no computer: Slave switch + right USB-C";
+        } else {
+            border = s.warn;
+            info = "copy images on, then eject it there";
+        }
     } else {
         const auto* img = inserted();
         const std::string kind = state_.cd ? "CD-ROM" : "USB disk";
@@ -281,7 +318,10 @@ void DiscApp::refresh_list() {
             lv_obj_set_style_bg_opa(rows_[i], LV_OPA_TRANSP, 0);
             lv_label_set_text(row_mark_[i], "");
             lv_label_set_text(row_size_[i], "");
-            if (i == 1 && n == 0) {
+            if (i == 3 && n == 0 && scan_error_.empty()) {
+                lv_obj_set_style_text_color(row_name_[i], s.dim, 0);
+                lv_label_set_text(row_name_[i], "or U: copy them in over USB");
+            } else if (i == 1 && n == 0) {
                 lv_obj_set_style_text_color(row_name_[i], s.dim, 0);
                 lv_label_set_text(row_name_[i], scan_error_.empty() ? "no images: copy .iso files to" : scan_error_.c_str());
             } else if (i == 2 && n == 0 && scan_error_.empty()) {
@@ -342,7 +382,20 @@ void DiscApp::insert_selected() {
     }
 }
 
+void DiscApp::copy_in() {
+    if (state_.up && state_.drop) return;
+    command({"drop"}, "Preparing the flash drive");
+}
+
 bool DiscApp::action(int key) {
+    if (state_.up && state_.drop) {
+        if (key == 5) command({"replug"}, "Reconnecting USB");
+        if (key == 8) {
+            drop_in_use_ = false;
+            command({"import"}, "Importing images");
+        }
+        return key >= 4 && key <= 8;
+    }
     switch (key) {
         case 4:
             if (state_.up && !state_.file.empty()) command({"eject"}, "Ejecting");
@@ -431,6 +484,11 @@ bool DiscApp::on_key(const cz::KeyEvent& ev) {
                 case 's':
                 case 'S':
                     action(7);
+                    break;
+                case 'u':
+                case 'U':
+                case key::F(7):
+                    copy_in();
                     break;
                 case key::F(5):
                     rescan();

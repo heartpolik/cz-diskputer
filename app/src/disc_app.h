@@ -39,6 +39,7 @@ private:
     bool action(int key);
     void toggle_help();
     void insert_selected();
+    void copy_in();
     void command(const std::vector<std::string>& args, const std::string& busy_text);
     dp::Mode mode_for(const dp::Image& img) const;
     const dp::Image* inserted() const;
@@ -56,6 +57,7 @@ private:
     int first_{0};
     ModePref pref_{ModePref::Auto};
     std::string busy_text_;
+    bool drop_in_use_{false};  // the computer had the flash drive: import when it ejects it
     lv_timer_t* timer_{nullptr};
 
     lv_obj_t* root_{nullptr};

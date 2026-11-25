@@ -54,9 +54,15 @@ Checklist:
 | ![drive](app/screenshots/drive.png) | ![list](app/screenshots/list.png) |
 | ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
 | ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
-| ![fn](app/screenshots/fn.png) | |
+| ![fn](app/screenshots/fn.png) | ![copy](app/screenshots/copy.png) |
 
-- Images live in `~/discputer/images` on the CardputerZero (`scp` them over Wi-Fi). Each one shows its
+- **Copying images in over USB** (0.2.0): `U` or Fn+7 turns the drive into a writable USB flash drive
+  `DISCPUTER` (exFAT). Copy images onto it from the computer and eject it there: the app notices the
+  eject and moves every file into `~/discputer/images` (`8` = done, if the cable was just pulled).
+  The drive is a sparse file `/var/lib/discputer/drop.img` (free space minus 2 GiB, at most 64 GiB),
+  made fresh each time and deleted after the import; macOS `._*`, `.Spotlight-V100` etc. are skipped.
+  Measured: ~10 MB/s copy onto it, then ~10 MB/s import on the SD card (200 MB: 19 s + 21 s, md5 ok).
+- Images live in `~/discputer/images` on the CardputerZero (copied in over USB, or `scp` over Wi-Fi). Each one shows its
   volume label and what it is: `BOOT` (El Torito), `HYBRID` (also boots as a USB disk), `DATA`, `MBR`/`GPT`/`RAW`
   disk images, `BIN/CUE` (iteration B).
 - `Enter` inserts the selected image; with a disc already in, it swaps and reconnects USB so every host
@@ -66,7 +72,9 @@ Checklist:
 - Status: `ONLINE` = a computer uses the drive, `NO HOST` = the switch or the cable, `USB OFF` = stopped.
 - Privileges: the app runs as `pi`; the package installs a root helper `/usr/libexec/discputer/dp-gadget`
   and a sudo rule for the `plugdev` group (`/etc/sudoers.d/discputer`, checked with `visudo` in postinst).
-  The helper only accepts images under `~/discputer/images`, `/media` or `/mnt`, always read-only.
+  The helper only accepts images under `~/discputer/images`, `/media` or `/mnt`, always read-only;
+  the only writable drive is its own `/var/lib/discputer/drop.img`, and the import runs the file
+  operations in the user's home as that user (`runuser`).
 
 ## Development
 
