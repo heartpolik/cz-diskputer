@@ -41,8 +41,8 @@ and some UEFI firmware prefer that.
 
 Checklist:
 
-1. Data ISO on a Mac / PC: a CD drive appears and the disc mounts (`dptest1.iso` → `HELLO.TXT`).
-2. Swap: the computer notices the new disc (`dptest2.iso` → `SWAPPED.TXT`) without replugging.
+1. ✅ Data ISO on a Mac / PC: a CD drive appears and the disc mounts (`dptest1.iso` → `HELLO.TXT`). Mac: works (2026-11-25).
+2. ✅ Swap: the computer gets the new disc (`dptest2.iso` → `SWAPPED.TXT`). Mac: works with `swap` + `replug` as needed (2026-11-25).
 3. Boot: a real installer ISO (Linux, Windows) boots on a PC from the "USB CD" in BIOS/UEFI.
 4. Big images: a > 4 GB DVD ISO (Windows 10/11) reads fine.
 5. `disk` mode with a hybrid Linux ISO boots where `cd` mode does not (or the other way round).
