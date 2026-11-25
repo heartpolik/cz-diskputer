@@ -20,8 +20,8 @@ USBODE, so it is GPL-3.0 as well.
 
 | # | What | Status |
 |---|---|---|
-| 0 | `scripts/cz-gadget.sh`: kernel mass-storage gadget by hand, does a computer see a CD and boot from it? | testing |
-| A | CardputerZero app: list images, insert / eject / swap, CD or disk mode, through the kernel gadget (ISO only) | planned |
+| 0 | `scripts/cz-gadget.sh`: kernel mass-storage gadget by hand, does a computer see a CD and boot from it? | CD + swap ✅ on macOS; boot on a PC: to test |
+| A | CardputerZero app: list images, insert / eject / swap, CD or disk mode, through the kernel gadget (ISO only) | 0.1.0 works on the device |
 | B | own gadget over FunctionFS with SCSI/MMC: BIN/CUE, CD audio, multi-disc, better old-OS compatibility | planned |
 
 ## Iteration 0: test
@@ -46,6 +46,38 @@ Checklist:
 3. Boot: a real installer ISO (Linux, Windows) boots on a PC from the "USB CD" in BIOS/UEFI.
 4. Big images: a > 4 GB DVD ISO (Windows 10/11) reads fine.
 5. `disk` mode with a hybrid Linux ISO boots where `cd` mode does not (or the other way round).
+
+## The app (iteration A)
+
+| | |
+|---|---|
+| ![drive](app/screenshots/drive.png) | ![list](app/screenshots/list.png) |
+| ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
+| ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
+
+- Images live in `~/discputer/images` on the CardputerZero (`scp` them over Wi-Fi). Each one shows its
+  volume label and what it is: `BOOT` (El Torito), `HYBRID` (also boots as a USB disk), `DATA`, `MBR`/`GPT`/`RAW`
+  disk images, `BIN/CUE` (iteration B).
+- `Enter` inserts the selected image; with a disc already in, it swaps and reconnects USB so every host
+  notices. `E` eject, `R` reconnect, `S` stop the drive, `M` mode AUTO / CD / DISK (AUTO: CD for ISOs,
+  disk for `.img`). The drive keeps running after the app exits.
+- Status: `ONLINE` = a computer uses the drive, `NO HOST` = the switch or the cable, `USB OFF` = stopped.
+- Privileges: the app runs as `pi`; the package installs a root helper `/usr/libexec/discputer/dp-gadget`
+  and a sudo rule for the `plugdev` group (`/etc/sudoers.d/discputer`, checked with `visudo` in postinst).
+  The helper only accepts images under `~/discputer/images`, `/media` or `/mnt`, always read-only.
+
+## Development
+
+DiscPuter builds through [cardputer-zero-tools](https://github.com/heartpolik/cardputer-zero-tools)
+(czkit runtime, LVGL, packaging), checked out next to this repo (or `CZ_TOOLS=...`):
+
+```
+scripts/dp sim     desktop simulator (simulated USB drive; DP_IMAGES=<dir> for another folder)
+scripts/dp test    host tests of the image inspector
+scripts/dp shots   screenshots from fake images (scripts/make-demo-images.py)
+scripts/dp deb     arm64 .deb in Docker -> dist/
+scripts/dp push    build + install on the device
+```
 
 ## License
 

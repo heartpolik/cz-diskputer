@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Dev helper for DiscPuter. Builds through cardputer-zero-tools (czkit, LVGL, packaging),
+# expected next to this repo or at $CZ_TOOLS.
+#
+#   scripts/dp sim             build + run the desktop simulator (simulated USB drive)
+#   scripts/dp test            build + run host tests
+#   scripts/dp shots           render README screenshots -> app/screenshots/
+#   scripts/dp deb             arm64 .deb in Docker -> dist/
+#   scripts/dp push            deb + install on the device
+#   scripts/dp run [script]    run the installed app on the device (optional CZ_SCRIPT)
+#
+# Env: CZ_TOOLS (default ../cardputer-zero), CZ_HOST (default pi@192.168.1.215)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CZ="${CZ_TOOLS:-$(cd "$ROOT/../cardputer-zero" 2>/dev/null && pwd)}"
+HOST="${CZ_HOST:-pi@192.168.1.215}"
+BIN=cz-discputer
+[[ -d "$CZ/common" ]] || { echo "cardputer-zero-tools not found: set CZ_TOOLS" >&2; exit 1; }
+
+log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+
+sim_build() {
+    cmake -S "$CZ" -B "$ROOT/build/mac" -G "Ninja Multi-Config" \
+        -DCZ_APP_DIR="$ROOT/app" -DUSE_DESKTOP=ON \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_FIND_FRAMEWORK=LAST \
+        -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+        -DCMAKE_CONFIGURATION_TYPES="Debug;Release" \
+        -DFETCHCONTENT_BASE_DIR="$ROOT/.cache/mac-deps" \
+        -DCZ_DIST_DIR="$ROOT/dist" >/dev/null
+    cmake --build "$ROOT/build/mac" --config Debug
+}
+sim_bin() { echo "$ROOT/build/mac/external-app/Debug/$BIN"; }
+
+cmd="${1:-help}"
+case "$cmd" in
+    sim)
+        sim_build
+        exec "$(sim_bin)"
+        ;;
+    test)
+        sim_build
+        (cd "$ROOT/build/mac" && ctest -C Debug --output-on-failure -R dp_)
+        ;;
+    shots)
+        sim_build
+        out="$ROOT/app/screenshots"
+        mkdir -p "$out"
+        demo="$(mktemp -d)"
+        python3 "$ROOT/scripts/make-demo-images.py" "$demo"
+        tmpcfg="$(mktemp -d)"
+        script="$(sed "s|@OUT@|$out|g" "$ROOT/app/demo.script" | tr -d '\n')"
+        XDG_CONFIG_HOME="$tmpcfg" DP_IMAGES="$demo" CZ_SCRIPT="$script" "$(sim_bin)" >/dev/null
+        rm -rf "$tmpcfg" "$demo"
+        ls "$out"
+        ;;
+    deb)
+        log "building $BIN.deb (debian:trixie arm64 in Docker)"
+        docker image inspect cz-tools-build >/dev/null 2>&1 || docker build -t cz-tools-build "$CZ/docker"
+        parent="$(cd "$ROOT/.." && pwd)"
+        [[ "$(cd "$CZ/.." && pwd)" == "$parent" ]] || { echo "deb needs cardputer-zero-tools next to this repo" >&2; exit 1; }
+        rel_cz="$(basename "$CZ")"; rel_dp="$(basename "$ROOT")"
+        docker run --rm -v "$parent:/work" -w "/work/$rel_dp" cz-tools-build bash -c "
+            cmake -S /work/$rel_cz -B build/device -G Ninja -DUSE_DESKTOP=OFF \
+                -DCZ_APP_DIR=/work/$rel_dp/app -DCM0_SDK_ROOT=/ -DCMAKE_BUILD_TYPE=Release \
+                -DFETCHCONTENT_BASE_DIR=/work/$rel_dp/.cache/device-deps -DCZ_DIST_DIR=/work/$rel_dp/dist >/dev/null &&
+            cmake --build build/device && (cd build/device && cpack >/dev/null)"
+        ls -t "$ROOT"/dist/${BIN}_*_arm64.deb | head -1
+        ;;
+    push)
+        "$0" deb
+        deb="$(ls -t "$ROOT"/dist/${BIN}_*_arm64.deb | head -1)"
+        log "installing $(basename "$deb") on $HOST"
+        scp -q "$deb" "$HOST:/tmp/"
+        ssh "$HOST" "sudo apt-get install -y --reinstall /tmp/$(basename "$deb") && rm /tmp/$(basename "$deb")"
+        ;;
+    run)
+        script="${2:-}"
+        ssh "$HOST" "CZ_SCRIPT='$script' /usr/bin/$BIN"
+        ;;
+    *)
+        sed -n '2,13p' "$0"
+        ;;
+esac

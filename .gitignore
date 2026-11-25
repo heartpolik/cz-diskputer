@@ -4,3 +4,6 @@
 *.cue
 build/
 .DS_Store
+build/
+dist/
+.cache/

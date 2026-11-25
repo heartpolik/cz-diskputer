@@ -1,0 +1,6 @@
+{wait:200}{enter}{wait:700}{shot:@OUT@/drive.png}
+{down}{down}{down}{down}{down}{down}{wait:150}{shot:@OUT@/list.png}
+{enter}{wait:800}{shot:@OUT@/swap.png}
+{up}{up}{wait:100}{enter}{wait:800}{shot:@OUT@/disk.png}
+s{wait:600}{shot:@OUT@/off.png}
+{f1}{wait:150}{shot:@OUT@/help.png}{quit}
