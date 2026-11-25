@@ -94,6 +94,8 @@ DiscApp::DiscApp(cz::Runtime& rt)
     state_ = gadget_->state();
     build();
     rt_.set_layer_handler([this](cz::LayerState s) { bar_.show_layer(s); });
+    // on a fresh install sudo has no rule for the helper yet: the answer opens the setup screen
+    gadget_->start({"status"});
     timer_ = lv_timer_create([](lv_timer_t* t) { static_cast<DiscApp*>(lv_timer_get_user_data(t))->poll(); }, 300,
                              this);
 }
@@ -186,7 +188,81 @@ void DiscApp::build() {
     help_text_ = make_label(help_, s.mono12, s.text, kHelp);
     lv_label_set_recolor(help_text_, true);
     lv_obj_add_flag(help_, LV_OBJ_FLAG_HIDDEN);
+
+    setup_ = make_box(root_, 0, 0, kWidth, kHeight);
+    lv_obj_set_style_bg_color(setup_, s.bg, 0);
+    lv_obj_set_style_bg_opa(setup_, LV_OPA_COVER, 0);
+    auto* st = make_label(setup_, s.ui12, s.accent, "FIRST RUN");
+    lv_obj_set_pos(st, 8, 4);
+    const char* user = std::getenv("USER");
+    const std::string why = std::string(
+                                "DiscPuter turns the USB port into a CD drive\n"
+                                "or a flash drive: that needs root. Type the\n"
+                                "password of user ") +
+                            (user ? user : "pi") +
+                            " once; it adds a sudo rule for\n"
+                            "DiscPuter's own helper only:\n"
+                            "/usr/lib/cz-discputer/dp-gadget";
+    auto* sw = make_label(setup_, s.ui10, s.text, why.c_str());
+    lv_obj_set_pos(sw, 8, 22);
+    setup_field_ = make_box(setup_, 8, 98, kWidth - 16, 22);
+    lv_obj_set_style_border_width(setup_field_, 1, 0);
+    lv_obj_set_style_border_color(setup_field_, s.accent, 0);
+    lv_obj_set_style_radius(setup_field_, 3, 0);
+    auto* dots = make_label(setup_field_, s.mono14, s.text);
+    lv_obj_set_pos(dots, 6, 2);
+    setup_note_label_ = make_label(setup_, s.ui10, s.dim);
+    lv_obj_set_pos(setup_note_label_, 8, 126);
+    auto* keys = make_label(setup_, s.ui10, s.dim, "Enter  OK        Esc  later (USB stays off)");
+    lv_obj_set_pos(keys, 8, 150);
+    lv_obj_add_flag(setup_, LV_OBJ_FLAG_HIDDEN);
+    refresh_setup();
     refresh();
+}
+
+void DiscApp::show_setup(bool on) {
+    setup_on_ = on;
+    if (!on) {
+        password_.clear();
+        setup_note_.clear();
+    }
+    refresh_setup();
+}
+
+void DiscApp::refresh_setup() {
+    if (!setup_) return;
+    if (!setup_on_) {
+        lv_obj_add_flag(setup_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_clear_flag(setup_, LV_OBJ_FLAG_HIDDEN);
+    std::string dots(password_.size(), '*');
+    if (!setup_checking_) dots += "_";
+    lv_label_set_text(lv_obj_get_child(setup_field_, 0), dots.c_str());
+    const std::string note = setup_checking_ ? "checking..." : setup_note_;
+    lv_label_set_text(setup_note_label_, note.c_str());
+    lv_obj_set_style_text_color(setup_note_label_, setup_note_.empty() || setup_checking_ ? style_.dim : style_.error,
+                                0);
+}
+
+bool DiscApp::setup_key(const cz::KeyEvent& ev) {
+    if (!ev.pressed_or_repeat() || setup_checking_) return true;
+    const uint32_t k = ev.key;
+    if (k == key::Esc) {
+        show_setup(false);
+    } else if (k == key::Enter) {
+        if (!password_.empty() && gadget_->start_setup(password_)) {
+            setup_checking_ = true;
+            password_.clear();
+        }
+    } else if (k == key::Backspace || k == key::Delete) {
+        if (!password_.empty()) password_.pop_back();
+    } else if (k >= 32 && k < 127 && password_.size() < 64) {
+        password_.push_back(static_cast<char>(k));
+        setup_note_.clear();
+    }
+    refresh_setup();
+    return true;
 }
 
 void DiscApp::destroy() {
@@ -199,6 +275,20 @@ void DiscApp::poll() {
     if (gadget_->take_result(r)) {
         busy_text_.clear();
         rescan();
+        if (r.command == "setup") {
+            setup_checking_ = false;
+            if (r.ok) show_setup(false);
+            else {
+                setup_note_ = r.message;
+                refresh_setup();
+                r.message.clear();
+            }
+        } else if (r.needs_setup) {
+            show_setup(true);
+            r.message.clear();
+        } else if (r.command == "status") {
+            r.message.clear();  // the quiet start-up check
+        }
         if (!r.message.empty()) {
             rt_.toast().show(r.message, r.ok ? view::widgets::ToastTone::Default : view::widgets::ToastTone::Error,
                              r.ok ? 1500 : 3500);
@@ -433,6 +523,7 @@ void DiscApp::toggle_help() {
 }
 
 bool DiscApp::on_key(const cz::KeyEvent& ev) {
+    if (setup_on_) return setup_key(ev);
     const bool press = ev.phase == cz::KeyPhase::Press;
     const uint32_t k = ev.key;
     if (!lv_obj_has_flag(help_, LV_OBJ_FLAG_HIDDEN)) {

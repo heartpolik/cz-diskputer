@@ -1,6 +1,7 @@
 #include "gadget.h"
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -19,7 +20,7 @@ namespace {
 
 constexpr const char* kGadgetDir = "/sys/kernel/config/usb_gadget/discputer";
 constexpr const char* kLun = "/sys/kernel/config/usb_gadget/discputer/functions/mass_storage.usb0/lun.0";
-constexpr const char* kHelper = "/usr/libexec/discputer/dp-gadget";
+constexpr const char* kHelper = "/usr/lib/cz-discputer/dp-gadget";
 
 std::string read_line(const std::string& path) {
     std::ifstream in(path);
@@ -39,11 +40,18 @@ std::string last_line(const std::string& text) {
     return last;
 }
 
-// runs a command, returns its exit code and combined output
-int run_capture(const std::vector<std::string>& argv, std::string& output) {
+// runs a command with input on its stdin, returns its exit code and combined output
+int run_capture(const std::vector<std::string>& argv, const std::string& input, std::string& output) {
     int pipefd[2];
+    int infd[2];
     if (pipe(pipefd) != 0) {
         output = std::string("pipe: ") + std::strerror(errno);
+        return -1;
+    }
+    if (pipe(infd) != 0) {
+        output = std::string("pipe: ") + std::strerror(errno);
+        close(pipefd[0]);
+        close(pipefd[1]);
         return -1;
     }
     const pid_t pid = fork();
@@ -51,11 +59,16 @@ int run_capture(const std::vector<std::string>& argv, std::string& output) {
         output = std::string("fork: ") + std::strerror(errno);
         close(pipefd[0]);
         close(pipefd[1]);
+        close(infd[0]);
+        close(infd[1]);
         return -1;
     }
     if (pid == 0) {
+        dup2(infd[0], STDIN_FILENO);
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
+        close(infd[0]);
+        close(infd[1]);
         close(pipefd[0]);
         close(pipefd[1]);
         std::vector<char*> args;
@@ -65,6 +78,13 @@ int run_capture(const std::vector<std::string>& argv, std::string& output) {
         _exit(127);
     }
     close(pipefd[1]);
+    close(infd[0]);
+    // small (a password line): fits the pipe buffer, so no deadlock against the reader below
+    if (!input.empty()) {
+        ssize_t w = write(infd[1], input.data(), input.size());
+        (void)w;
+    }
+    close(infd[1]);
     char buf[512];
     ssize_t n;
     while ((n = read(pipefd[0], buf, sizeof buf)) > 0) output.append(buf, static_cast<size_t>(n));
@@ -79,12 +99,15 @@ public:
     ~BackgroundCommands() override {
         if (worker_.joinable()) worker_.join();
     }
-    bool start(const std::vector<std::string>& args) override {
+    bool start(const std::vector<std::string>& args) override { return launch(args, ""); }
+    bool start_setup(const std::string& password) override { return launch({"setup"}, password); }
+    bool launch(const std::vector<std::string>& args, const std::string& password) {
         if (busy_) return false;
         if (worker_.joinable()) worker_.join();
         busy_ = true;
-        worker_ = std::thread([this, args] {
-            CommandResult r = execute(args);
+        worker_ = std::thread([this, args, password] {
+            CommandResult r = execute(args, password);
+            r.command = args.empty() ? "" : args[0];
             std::lock_guard<std::mutex> lock(mu_);
             result_ = r;
             has_result_ = true;
@@ -102,7 +125,8 @@ public:
     }
 
 protected:
-    virtual CommandResult execute(const std::vector<std::string>& args) = 0;
+    // password: only for setup (sudo -S); empty = sudo -n
+    virtual CommandResult execute(const std::vector<std::string>& args, const std::string& password) = 0;
 
 private:
     std::thread worker_;
@@ -135,20 +159,30 @@ public:
     }
 
 protected:
-    CommandResult execute(const std::vector<std::string>& args) override {
+    CommandResult execute(const std::vector<std::string>& args, const std::string& password) override {
         CommandResult r;
         if (!fs::exists(kHelper)) {
             r.message = "helper missing: reinstall the package";
             return r;
         }
-        std::vector<std::string> argv = {"sudo", "-n", kHelper};
+        std::vector<std::string> argv = {"sudo"};
+        if (password.empty()) argv.push_back("-n");
+        else argv.insert(argv.end(), {"-S", "-k", "-p", ""});  // password from stdin, no prompt text
+        argv.push_back(kHelper);
         argv.insert(argv.end(), args.begin(), args.end());
         std::string out;
-        const int code = run_capture(argv, out);
+        const int code = run_capture(argv, password.empty() ? "" : password + "\n", out);
         r.ok = code == 0;
         r.message = last_line(out);
         if (!r.ok && out.find("a password is required") != std::string::npos) {
-            r.message = "sudo rule missing: reinstall the package";
+            r.needs_setup = true;
+            r.message = "first run: DiscPuter needs your password once";
+        } else if (!r.ok && !password.empty() &&
+                   (out.find("incorrect password") != std::string::npos ||
+                    out.find("Sorry, try again") != std::string::npos)) {
+            r.message = "wrong password";
+        } else if (!r.ok && !password.empty() && out.find("not in the sudoers") != std::string::npos) {
+            r.message = "this user may not use sudo";
         }
         return r;
     }
@@ -164,12 +198,27 @@ public:
     }
 
 protected:
-    CommandResult execute(const std::vector<std::string>& args) override {
+    CommandResult execute(const std::vector<std::string>& args, const std::string& password) override {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         std::lock_guard<std::mutex> lock(mu_);
         CommandResult r{true, ""};
         const std::string cmd = args.empty() ? "" : args[0];
-        if (cmd == "up") {
+        // DP_SIM_SETUP=1: start like a fresh install, any password but "wrong" works
+        if (cmd == "setup") {
+            r.ok = password != "wrong";
+            r.message = r.ok ? "ready: DiscPuter can drive USB now" : "wrong password";
+            if (r.ok) needs_setup_ = false;
+            return r;
+        }
+        if (needs_setup_) {
+            r.ok = false;
+            r.needs_setup = true;
+            r.message = "first run: DiscPuter needs your password once";
+            return r;
+        }
+        if (cmd == "status") {
+            r.message = "gadget: down";
+        } else if (cmd == "up") {
             s_.up = true;
             s_.file = args.size() > 1 ? args[1] : "";
             s_.cd = args.size() < 3 || args[2] != "disk";
@@ -180,7 +229,7 @@ protected:
             s_.up = true;
             s_.cd = false;
             s_.drop = true;
-            s_.file = "/var/lib/discputer/drop.img";
+            s_.file = "/var/lib/cz-discputer/drop.img";
             s_.usb = "configured";
             r.message = "USB flash drive DISCPUTER";
         } else if (cmd == "import") {
@@ -206,6 +255,7 @@ protected:
 
 private:
     std::mutex mu_;
+    bool needs_setup_{std::getenv("DP_SIM_SETUP") != nullptr};
     GadgetState s_{false, true, false, "", "not attached", true};
 };
 

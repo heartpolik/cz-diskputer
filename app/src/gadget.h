@@ -21,7 +21,9 @@ struct GadgetState {
 
 struct CommandResult {
     bool ok{false};
-    std::string message;  // last line of the helper's output
+    std::string message;      // last line of the helper's output
+    bool needs_setup{false};  // sudo wants a password: the first-run setup has not been done
+    std::string command;      // the helper command it was (up, swap, setup, ...)
 };
 
 class Gadget {
@@ -30,6 +32,8 @@ public:
     virtual GadgetState state() = 0;
     // starts a helper command in the background; false while another one runs
     virtual bool start(const std::vector<std::string>& args) = 0;
+    // the first-run setup: "dp-gadget setup" through sudo -S with the user's password
+    virtual bool start_setup(const std::string& password) = 0;
     virtual bool busy() const = 0;
     // the finished command's result, once
     virtual bool take_result(CommandResult& out) = 0;

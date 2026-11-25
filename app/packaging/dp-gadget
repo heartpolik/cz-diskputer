@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # DiscPuter USB gadget helper: show a disc image to a computer as a USB CD-ROM (or a
 # read-only disk) through the Linux mass-storage gadget. Installed as
-# /usr/libexec/discputer/dp-gadget and run by the app through sudo (see /etc/sudoers.d/discputer),
-# so it only accepts images inside an images folder: ~/discputer/images, /media, /mnt.
+# /usr/lib/cz-discputer/dp-gadget and run by the app through sudo. The sudo rule is not
+# written by the package: on its first run the app asks for the user's password once and runs
+# "dp-gadget setup" (sudo -S), which adds /etc/sudoers.d/cz-discputer after a visudo check.
+# It only accepts images inside an images folder: ~/discputer/images, /media, /mnt.
 #
 #   sudo cz-gadget.sh up <image> [cd|disk]   create the gadget and "insert" the image
 #   sudo cz-gadget.sh swap <image> [replug]  change the disc (replug: also reconnect USB,
@@ -15,6 +17,7 @@
 #                                            images onto from the computer
 #   sudo cz-gadget.sh import                 after the computer ejected it: move what was copied
 #                                            into ~/discputer/images
+#   sudo cz-gadget.sh setup | uninstall      add / remove the sudo rule for the plugdev group
 #
 # The Host/Slave switch on the left side must be on Slave: then the CM0 USB goes to
 # the RIGHT USB-C port (the USB hub, Ethernet and USB-A are off while it is there).
@@ -28,9 +31,11 @@ G=/sys/kernel/config/usb_gadget/discputer
 F=$G/functions/mass_storage.usb0
 LUN=$F/lun.0
 # the copy-in flash drive: root's own, outside the user's home (no symlink games)
-DROP_DIR=/var/lib/discputer
+DROP_DIR=/var/lib/cz-discputer
 DROP=$DROP_DIR/drop.img
-DROP_MNT=/run/discputer/drop
+DROP_MNT=/run/cz-discputer/drop
+HELPER=/usr/lib/cz-discputer/dp-gadget
+RULE=/etc/sudoers.d/cz-discputer
 GiB=$((1024 * 1024 * 1024))
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -295,6 +300,37 @@ down() {
     echo "gadget: down"
 }
 
+# ------------------------------------------------------------ the sudo rule
+
+# Members of plugdev (the CardputerZero user "pi" is one) may run this helper, and only this
+# helper, as root without a password. Asked for by the app once, with the user's password.
+setup() {
+    need_root
+    local tmp
+    tmp=$(mktemp)
+    printf '%s\n' \
+        '# DiscPuter (cz-discputer): the USB drive emulation helper; it only accepts image folders' \
+        "%plugdev ALL=(root) NOPASSWD: $HELPER" > "$tmp"
+    if ! visudo -cf "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        die "the sudo rule failed the visudo check"
+    fi
+    install -m 0440 -o root -g root "$tmp" "$RULE"
+    rm -f "$tmp"
+    # the rule of the pre-store builds (0.1, 0.2 for /usr/libexec)
+    rm -f /etc/sudoers.d/discputer
+    echo "ready: DiscPuter can drive USB now"
+}
+
+# package removal (prerm): no drive, no mount, no rule
+uninstall() {
+    need_root
+    down >/dev/null 2>&1 || true
+    mountpoint -q "$DROP_MNT" && umount "$DROP_MNT"
+    rm -f "$RULE"
+    echo "uninstalled"
+}
+
 cmd=${1:-status}
 shift || true
 case $cmd in
@@ -306,5 +342,7 @@ case $cmd in
     down) down ;;
     drop) drop ;;
     import) import ;;
-    *) sed -n '2,19p' "$0"; exit 1 ;;
+    setup) setup ;;
+    uninstall) uninstall ;;
+    *) sed -n '2,21p' "$0"; exit 1 ;;
 esac

@@ -25,8 +25,8 @@ if(USE_DESKTOP)
     add_test(NAME dp_core COMMAND dp_core_tests)
 endif()
 
-# the root helper and its sudo rule (written by postinst after a visudo check)
-install(PROGRAMS packaging/dp-gadget DESTINATION libexec/discputer)
+# the root helper; its sudo rule is added on the first run (dp-gadget setup, asked for by the app)
+install(PROGRAMS packaging/dp-gadget DESTINATION lib/cz-discputer)
 
 include("${PROJECT_SOURCE_DIR}/cmake/cz-package.cmake")
 cz_package_app(
@@ -39,6 +39,6 @@ cz_package_app(
     LICENSE      ../LICENSE
 )
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm")
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "sudo, exfatprogs")
 include(CPack)

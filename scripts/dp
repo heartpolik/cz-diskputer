@@ -51,6 +51,10 @@ case "$cmd" in
         tmpcfg="$(mktemp -d)"
         script="$(sed "s|@OUT@|$out|g" "$ROOT/app/demo.script" | tr -d '\n')"
         XDG_CONFIG_HOME="$tmpcfg" DP_IMAGES="$demo" CZ_SCRIPT="$script" "$(sim_bin)" >/dev/null
+        # the first-run setup screen, as on a fresh install (sudo rule not there yet)
+        rm -rf "$tmpcfg"; tmpcfg="$(mktemp -d)"
+        XDG_CONFIG_HOME="$tmpcfg" DP_IMAGES="$demo" DP_SIM_SETUP=1 USER=pi \
+            CZ_SCRIPT="{wait:600}raspberry{wait:150}{shot:$out/setup.png}{quit}" "$(sim_bin)" >/dev/null
         rm -rf "$tmpcfg" "$demo"
         ls "$out"
         ;;

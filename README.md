@@ -21,7 +21,7 @@ USBODE, so it is GPL-3.0 as well.
 | # | What | Status |
 |---|---|---|
 | 0 | `scripts/cz-gadget.sh`: kernel mass-storage gadget by hand, does a computer see a CD and boot from it? | CD + swap ✅ on macOS; boot on a PC: to test |
-| A | CardputerZero app: list images, insert / eject / swap, CD or disk mode, through the kernel gadget (ISO only) | 0.1.0 works on the device |
+| A | CardputerZero app: list images, insert / eject / swap, CD or disk mode, through the kernel gadget (ISO only) | 0.1.0 works on the device; 0.2.0: copy images in over USB, store-ready packaging |
 | B | own gadget over FunctionFS with SCSI/MMC: BIN/CUE, CD audio, multi-disc, better old-OS compatibility | planned |
 
 ## Iteration 0: test
@@ -55,11 +55,12 @@ Checklist:
 | ![swap](app/screenshots/swap.png) | ![disk](app/screenshots/disk.png) |
 | ![off](app/screenshots/off.png) | ![help](app/screenshots/help.png) |
 | ![fn](app/screenshots/fn.png) | ![copy](app/screenshots/copy.png) |
+| ![setup](app/screenshots/setup.png) | |
 
 - **Copying images in over USB** (0.2.0): `U` or Fn+7 turns the drive into a writable USB flash drive
   `DISCPUTER` (exFAT). Copy images onto it from the computer and eject it there: the app notices the
   eject and moves every file into `~/discputer/images` (`8` = done, if the cable was just pulled).
-  The drive is a sparse file `/var/lib/discputer/drop.img` (free space minus 2 GiB, at most 64 GiB),
+  The drive is a sparse file `/var/lib/cz-discputer/drop.img` (free space minus 2 GiB, at most 64 GiB),
   made fresh each time and deleted after the import; macOS `._*`, `.Spotlight-V100` etc. are skipped.
   Measured: ~10 MB/s copy onto it, then ~10 MB/s import on the SD card (200 MB: 19 s + 21 s, md5 ok).
 - Images live in `~/discputer/images` on the CardputerZero (copied in over USB, or `scp` over Wi-Fi). Each one shows its
@@ -70,8 +71,11 @@ Checklist:
   disk for `.img`). The drive keeps running after the app exits. Labels over keys 4..8 show these
   actions; with Fn tapped they switch to Fn+4..8 (F5 rescan, F6 theme).
 - Status: `ONLINE` = a computer uses the drive, `NO HOST` = the switch or the cable, `USB OFF` = stopped.
-- Privileges: the app runs as `pi`; the package installs a root helper `/usr/libexec/discputer/dp-gadget`
-  and a sudo rule for the `plugdev` group (`/etc/sudoers.d/discputer`, checked with `visudo` in postinst).
+- Privileges: the app runs as `pi`; the package installs a root helper `/usr/lib/cz-discputer/dp-gadget`.
+  The package itself does not touch sudo (the CardputerZero Store forbids that in maintainer scripts):
+  on the first run the app shows a FIRST RUN screen, takes the user's password once and runs
+  `sudo -S dp-gadget setup`, which adds a rule for the `plugdev` group and this helper only
+  (`/etc/sudoers.d/cz-discputer`, checked with `visudo`). Removing the package removes the rule (prerm).
   The helper only accepts images under `~/discputer/images`, `/media` or `/mnt`, always read-only;
   the only writable drive is its own `/var/lib/discputer/drop.img`, and the import runs the file
   operations in the user's home as that user (`runuser`).

@@ -1,8 +1,13 @@
 #!/bin/sh
-# Take the virtual drive away before the helper disappears.
+# Take the virtual drive away before the helper goes; on removal the helper also takes
+# out the sudo rule it added on the first run (dp-gadget setup).
 set -e
-if [ -x /usr/libexec/discputer/dp-gadget ]; then
-    /usr/libexec/discputer/dp-gadget down >/dev/null 2>&1 || true
+H=/usr/lib/cz-discputer/dp-gadget
+if [ -x "$H" ]; then
+    if [ "$1" = remove ]; then
+        "$H" uninstall >/dev/null 2>&1 || true
+    else
+        "$H" down >/dev/null 2>&1 || true
+    fi
 fi
-mountpoint -q /run/discputer/drop && umount /run/discputer/drop || true
 exit 0
