@@ -3,6 +3,7 @@
 #include "gadget.h"
 #include "library.h"
 #include "runtime.h"
+#include "shortcut_bar.h"
 #include "ui_style.h"
 
 #include <filesystem>
@@ -34,6 +35,8 @@ private:
     void refresh_drive();
     void refresh_list();
     void refresh_footer();
+    void refresh_bar();
+    bool action(int key);
     void toggle_help();
     void insert_selected();
     void command(const std::vector<std::string>& args, const std::string& busy_text);
@@ -66,6 +69,7 @@ private:
     lv_obj_t* row_name_[kRows]{};
     lv_obj_t* row_size_[kRows]{};
     lv_obj_t* footer_{nullptr};
+    cz::ShortcutBar bar_;
     lv_obj_t* help_{nullptr};
     lv_obj_t* help_text_{nullptr};
 };

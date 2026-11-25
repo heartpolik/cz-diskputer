@@ -17,11 +17,11 @@ using cz::kWidth;
 using cz::make_box;
 using cz::make_label;
 
-constexpr int kDriveY = 20;
-constexpr int kDriveH = 40;
-constexpr int kListY = 64;
+constexpr int kDriveY = 19;
+constexpr int kDriveH = 38;
+constexpr int kListY = 60;
 constexpr int kRowH = 15;
-constexpr int kFooterY = 141;
+constexpr int kFooterY = 137;
 
 const char* kHelp =
     "#63e2b7 DISCPUTER# - USB optical drive\n"
@@ -33,12 +33,13 @@ const char* kHelp =
     "Cable: RIGHT USB-C to the computer\n"
     "(Ethernet and USB-A are off in Slave)\n"
     "\n"
-    "#63e2b7 KEYS#\n"
-    "Fn+F/X  choose an image\n"
-    "Enter   insert it (swaps the disc)\n"
-    "E       eject       R  reconnect USB\n"
-    "M       mode AUTO / CD / DISK\n"
-    "S       stop the drive\n"
+    "#63e2b7 KEYS# (under the screen: 4..8)\n"
+    "F / X   choose an image (no Fn needed)\n"
+    "8 Enter insert it (swaps the disc)\n"
+    "4 E     eject\n"
+    "5 R     reconnect USB\n"
+    "6 M     mode AUTO / CD / DISK\n"
+    "7 S     stop the drive\n"
     "F5      rescan the folder   F6 theme\n"
     "\n"
     "#63e2b7 MODES#\n"
@@ -160,6 +161,8 @@ void DiscApp::build() {
     lv_obj_set_width(footer_, kWidth - 16);
     lv_label_set_long_mode(footer_, LV_LABEL_LONG_MODE_DOTS);
 
+    bar_.build(root_, s);
+
     help_ = make_box(root_, 0, 0, kWidth, kHeight);
     lv_obj_set_style_bg_color(help_, s.bg, 0);
     lv_obj_set_style_bg_opa(help_, LV_OPA_COVER, 0);
@@ -198,13 +201,26 @@ void DiscApp::refresh() {
     refresh_drive();
     refresh_list();
     refresh_footer();
+    refresh_bar();
+}
+
+void DiscApp::refresh_bar() {
+    const bool idle = !gadget_->busy();
+    const bool up = state_.up;
+    const bool have = !images_.empty() && images_[static_cast<size_t>(sel_)].info.supported();
+    const char* mode = pref_ == ModePref::Auto ? "auto" : pref_ == ModePref::Cd ? "cd" : "disk";
+    bar_.set(4, "eject", idle && up && !state_.file.empty());
+    bar_.set(5, "usb", idle && up);
+    bar_.set(6, mode, idle);
+    bar_.set(7, "stop", idle && up);
+    bar_.set(8, up && !state_.file.empty() ? "swap" : "insert", idle && have);
 }
 
 void DiscApp::refresh_status() {
     const auto& s = style_;
     std::string text;
     const char* pref = pref_ == ModePref::Auto ? "AUTO" : pref_ == ModePref::Cd ? "CD" : "DISK";
-    text += "#" + color_hex(s.dim) + " MODE " + pref + "#   ";
+    (void)pref;
     if (!state_.up) text += "#" + color_hex(s.dim) + " USB OFF#";
     else if (state_.usb == "configured") text += "#" + color_hex(s.accent) + " ONLINE#";
     else text += "#" + color_hex(s.warn) + " NO HOST#";
@@ -321,6 +337,34 @@ void DiscApp::insert_selected() {
     }
 }
 
+bool DiscApp::action(int key) {
+    switch (key) {
+        case 4:
+            if (state_.up && !state_.file.empty()) command({"eject"}, "Ejecting");
+            return true;
+        case 5:
+            if (state_.up) command({"replug"}, "Reconnecting USB");
+            return true;
+        case 6: {
+            pref_ = pref_ == ModePref::Auto ? ModePref::Cd : pref_ == ModePref::Cd ? ModePref::Disk : ModePref::Auto;
+            // a disc in the drive follows the new mode right away
+            const auto* img = inserted();
+            if (state_.up && img && state_.cd != (mode_for(*img) == dp::Mode::Cd)) {
+                command({"up", img->path, mode_for(*img) == dp::Mode::Cd ? "cd" : "disk"}, "Switching mode");
+            }
+            return true;
+        }
+        case 7:
+            if (state_.up) command({"down"}, "Stopping the drive");
+            return true;
+        case 8:
+            insert_selected();
+            return true;
+        default:
+            return false;
+    }
+}
+
 void DiscApp::toggle_help() {
     if (!lv_obj_has_flag(help_, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_add_flag(help_, LV_OBJ_FLAG_HIDDEN);
@@ -343,11 +387,18 @@ bool DiscApp::on_key(const cz::KeyEvent& ev) {
     if (!ev.pressed_or_repeat()) return false;
     const int n = static_cast<int>(images_.size());
 
+    if (press && cz::ShortcutBar::is_key(k)) {
+        action(cz::ShortcutBar::key_of(k));
+        refresh();
+        return true;
+    }
     switch (k) {
         case key::Up:
+        case 'f':  // F/X/Z/C are arrows on CardputerZero without Fn (launcher convention)
             if (n) sel_ = (sel_ + n - 1) % n;
             break;
         case key::Down:
+        case 'x':
             if (n) sel_ = (sel_ + 1) % n;
             break;
         default:
@@ -358,32 +409,24 @@ bool DiscApp::on_key(const cz::KeyEvent& ev) {
                     toggle_help();
                     return true;
                 case key::Enter:
-                    insert_selected();
+                    action(8);
                     break;
                 case 'e':
                 case 'E':
-                    if (state_.up) command({"eject"}, "Ejecting");
+                    action(4);
                     break;
                 case 'r':
                 case 'R':
-                    if (state_.up) command({"replug"}, "Reconnecting USB");
+                    action(5);
+                    break;
+                case 'm':
+                case 'M':
+                    action(6);
                     break;
                 case 's':
                 case 'S':
-                    if (state_.up) command({"down"}, "Stopping the drive");
+                    action(7);
                     break;
-                case 'm':
-                case 'M': {
-                    pref_ = pref_ == ModePref::Auto ? ModePref::Cd
-                            : pref_ == ModePref::Cd ? ModePref::Disk
-                                                    : ModePref::Auto;
-                    // a disc in the drive follows the new mode right away
-                    const auto* img = inserted();
-                    if (state_.up && img && state_.cd != (mode_for(*img) == dp::Mode::Cd)) {
-                        command({"up", img->path, mode_for(*img) == dp::Mode::Cd ? "cd" : "disk"}, "Switching mode");
-                    }
-                    break;
-                }
                 case key::F(5):
                     rescan();
                     rt_.toast().show(std::to_string(images_.size()) + " images", view::widgets::ToastTone::Default,
