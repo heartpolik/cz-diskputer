@@ -19,7 +19,7 @@
     ],
     "icon": "packaging/store-icon.png",
     "license": "GPL-3.0",
-    "source_repo": "https://github.com/heartpolik/discputer",
+    "source_repo": "https://github.com/heartpolik/cz-diskputer",
     "author": { "github": "heartpolik", "display_name": "heartpolik" },
     "share_code": "DISC",
     "permissions": {

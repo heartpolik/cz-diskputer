@@ -26,7 +26,7 @@
 - macOS: CD монтується; заміна диска — `swap` і `replug` обидва працюють (застосунок робить swap+replug).
 
 ## Публікація
-- Репо: github.com/heartpolik/discputer (публічний). Метадані стору: `app/app-builder.json` (≤ 6 скриншотів, summary ≤ 80).
+- Репо: github.com/heartpolik/cz-diskputer (публічний). Метадані стору: `app/app-builder.json` (≤ 6 скриншотів, summary ≤ 80).
 - Перевірити deb локально тими ж скриптами, що й CI стору: `.github/scripts/install_path_policy.py` + grep небезпечних шаблонів.
 
 ## Ітерації
