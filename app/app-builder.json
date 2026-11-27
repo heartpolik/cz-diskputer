@@ -2,7 +2,7 @@
   "package_name": "cz-discputer",
   "app_name": "DiscPuter",
   "bin_name": "cz-discputer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "USB optical drive emulator: boot installers from ISO images",
 
   "store": {
@@ -15,7 +15,8 @@
       "screenshots/swap.png",
       "screenshots/disk.png",
       "screenshots/copy.png",
-      "screenshots/setup.png"
+      "screenshots/setup.png",
+      "screenshots/connect.png"
     ],
     "icon": "packaging/store-icon.png",
     "license": "GPL-3.0",

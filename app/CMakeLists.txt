@@ -1,7 +1,7 @@
 # cz-discputer: USB optical drive emulator (GPL-3.0). Built through cardputer-zero-tools:
 #   cmake -S <cardputer-zero-tools> -DCZ_APP_DIR=<this folder> ...   (scripts/dp does it)
 
-set(DP_VERSION 0.2.0)
+set(DP_VERSION 0.2.1)
 
 add_library(dp_core STATIC
     core/image_info.cpp
